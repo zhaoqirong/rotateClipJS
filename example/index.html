@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title></title>
+</head>
+<style type="text/css">
+	#outputContainer{
+		display: inline-block;
+		position:fixed;
+		right:10px;
+		top:10px;
+		width: 300px;
+		height: 300px;
+	}
+	#demoImage {
+		width:100%;
+		height: auto;
+	}
+	body{
+		margin:0;
+		padding:0;
+		font-size:12px;
+	}
+	ul.lanren{
+		width:300px;
+		margin:20px auto;
+	}
+	.scale_panel{
+		color:#999;
+		width:200px;
+		position:absolute;
+		line-height:18px;
+		left:60px;top:-0px;
+	}
+	.scale_panel .r{
+		float:right;
+	}
+	.scale span{
+		background:url(scroll.gif) no-repeat;
+		width:8px;
+		height:16px;
+		position:absolute;
+		left:-2px;top:-5px;
+		cursor:pointer;
+	}
+	.scale{
+		background-repeat: repeat-x;
+		background-position: 0 100%;
+		background-color: #E4E4E4;
+		border-left: 1px #83BBD9 solid;
+		width: 200px;
+		height: 3px;
+		position: relative;
+		font-size: 0px;
+		border-radius: 3px;
+	}
+	.scale div{
+		background-repeat: repeat-x;
+		background-color: #3BE3FF;
+		width: 0px;
+		position: absolute;
+		height: 3px;
+		width: 0;
+		left: 0;
+		bottom: 0;
+	}
+	.lanren li{
+		font-size:12px;
+		line-height:50px;
+		position:relative;
+		height:50px;
+		list-style:none;
+	}
+</style>
+<body>
+	
+	<!--拉伸进度条-->
+	<div style="position:absolute;top:20px">
+		<div style="display:inline-block">
+			<input id="file" type="file" name="file" value="点击选择图片" onchange="filechange">
+			<ul class="lanren">
+				<li><span id="title">0</span>
+					<div class="scale_panel">
+						<span class="r">100</span>0
+						<div class="scale" id="bar">
+							<div></div>
+							<span id="btn"></span>
+						</div>
+					</div>
+				</li>
+			</ul>
+		</div>
+	</div>
+	<!--图片预览区-->
+	<div id="outputContainer">
+		<img id="demoImage" src="demo.jpg">
+	</div>
+	<!--图片挂载区-->
+	<div id="haha" style="display:inline-block;margin-top:100px;margin-left:400px"></div>
+	<script type="text/javascript" src="rotateClip.js"></script>
+	<script type="text/javascript">
+		window.onload = function(){
+			var imgCanvas;	
+			document.getElementById("file").onchange = function(){
+				var file = event.target.files[0];
+				var reader = new FileReader();
+				reader.onload = function(e){
+					var base64 = e.target.result;
+					imgCanvas = new CropImage({
+						//options中需要的参数为：imgWidth,imgHeight,imgSrc,defaultAreaWidth,rotateModel,mountedTo,confirmCallback,cancelCallback
+
+		//				imgWidth:200, //期望图片裁剪出来后的宽高,可把图片拉伸到特定尺寸
+		//				imgHeight:100, //期望图片裁剪出来后的宽高,可把图片拉伸到特定尺寸
+		//				defaultAreaSize:500, //图片裁剪操作区域的大小，默认是500像素
+		//				rotateModel:'special', //图片的旋转方式，目前支持common和special两种方式
+						mountedTo:document.getElementById("haha"),//把裁剪区域挂载到目的dom元素上，默认是document.body
+						imgSrc:base64, //操作图片的地址，注意，如果不是本地图片，需要图片源支持跨域，否则不能输出base64
+						confirmCallback:function (base64,canvas) {  //成功的回调
+							var img = document.getElementById("demoImage");
+							img.src = base64;
+						},
+						cancelCallback:function(){ //取消按钮的回调
+							alert("取消裁剪");
+						}
+					});
+				};
+				reader.readAsDataURL(file);
+			}
+
+			var scale = function (btn,bar,title){
+				this.btn=document.getElementById(btn);
+				this.bar=document.getElementById(bar);
+				this.title=document.getElementById(title);
+				this.step=this.bar.getElementsByTagName("div")[0];
+				this.init();
+			};
+			scale.prototype={
+				init:function (){
+					var f=this,g=document,b=window,m=Math;
+					f.btn.onmousedown=function (e){
+						var x=(e||b.event).clientX;
+						var l=this.offsetLeft;
+						var max=f.bar.offsetWidth-this.offsetWidth;
+						g.onmousemove=function (e){
+							var thisX=(e||b.event).clientX;
+							var to=m.min(max,m.max(-2,l+(thisX-x)));
+							f.btn.style.left=to+'px';
+							f.ondrag(m.round(m.max(0,to/max)*100),to);
+							b.getSelection ? b.getSelection().removeAllRanges() : g.selection.empty();
+						};
+						g.onmouseup=new Function('this.onmousemove=null');
+					};
+				},
+				ondrag:function (pos,x){
+					this.step.style.width=Math.max(0,x)+'px';
+					this.title.innerHTML=pos+'%';
+					var angel = (pos /100) * 360;
+					 // 图片旋转的主方法
+					imgCanvas && imgCanvas.rotateImage(angel);
+				}
+			};
+			new scale('btn','bar','title');
+		}
+	</script>
+	<script type="text/javascript">	
+		
+	</script>
+</body>
+</html>
