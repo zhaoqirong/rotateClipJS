@@ -8,6 +8,6 @@
 <tr>
 <td>属性</td>
 <td>含义</td>
-<td>数值</td>
+<!-- <td>数值</td> -->
 </tr>
 </table>
