@@ -74,6 +74,12 @@
 		this.dragMaxH = null;
 		this.dragMaxW = null;
 		this.mouseTarget = null; //鼠标点击时，记录当前点击的对象
+		// add by qrzhao on 2017/9/6
+		this.angel = 0; // 记录最后一次旋转的角度
+		// 记录点击裁剪前，图片的宽高，用于在输出的时候算出跟原图的放缩比，并确定最终输出的canvas的宽高
+		this.viewWidth = 0;
+		this.viewHeight = 0;
+
 		//初始化方法
 		this.drag = this.drag.bind(this);
 		this.clearDragEvent = this.clearDragEvent.bind(this);
@@ -84,7 +90,7 @@
 		init:function (){
 			//设置canvas的宽高
 			this.canvas.width = this.canvas.height = this.defaultAreaSize;
-			var canvasParams = this.getCanvasParams();
+			var canvasParams = this.getCanvasParams(this.defaultAreaSize);
 			//计算裁剪框的宽高和位置,通过宽高比的大小来判断先改变宽度还是先改变高度，有利于平滑的拉伸裁剪框
 			if(this.proportion && this.proportion > 1){  //宽比高大
 				this.cropBox.style.width = this.defaultAreaSize / 2 + 'px';
@@ -98,6 +104,10 @@
 			}
 			this.cropBox.style.top = canvasParams.positionY + 'px';
 			this.cropBox.style.left = canvasParams.positionX + 'px';
+			
+			this.viewWidth = canvasParams.width;
+			this.viewHeight = canvasParams.height;
+
 			//先在canvas上画图
 			this.context.drawImage(this.imgDom,canvasParams.positionX,canvasParams.positionY,canvasParams.width,canvasParams.height);
 			//设置div的样式
@@ -127,48 +137,70 @@
 
 			this.showCropBoxSize();
 		},
-		rotateImage:function (angel){
-			this.context.clearRect(0,0,this.canvas.width,this.canvas.height);
+		rotateImage:function (angel,iCanvas,iContext){
+			var canvas = iCanvas;
+			var context = iContext;
+			if(!canvas) {
+				canvas = this.canvas;
+			}
+			if(!context) {
+				context = this.context;
+			}
+			context.clearRect(0,0,canvas.width,canvas.height);
 			//记住初始坐标原点
-			this.context.save();
+			context.save();
 			angel = angel ? (angel % 360) : 0;
+			this.angel = angel; // 把每次旋转的角度重新赋值
 			var rotation = Math.PI * angel / 180;
-			var centerX = this.canvas.width / 2;
-			var centerY = this.canvas.height / 2;
-			this.context.translate(centerX,centerY);
-			this.context.rotate(rotation);
-			this.drawImage(angel);
-			this.context.restore();
+			var centerX = canvas.width / 2;
+			var centerY = canvas.height / 2;
+			context.translate(centerX,centerY);
+			context.rotate(rotation);
+			this.drawImage(angel,canvas, context);
+			context.restore();
 		},
-		drawImage:function(angel){
-			if(this.rotateModel === 'special'){
-				var imgSize = this.getImgSize(angel);
-                this.context.drawImage(this.imgDom,-imgSize.width / 2,-imgSize.height / 2,imgSize.width,imgSize.height);
+		drawImage:function(angel, canvas, context){
+			if(this.rotateModel === 'common'){
+				var imgSize = this.getImgSize(angel, canvas);
+
+				this.viewWidth = imgSize.width;
+				this.viewHeight = imgSize.height;
+                context.drawImage(this.imgDom,-imgSize.width / 2,-imgSize.height / 2,imgSize.width,imgSize.height);
 			}else{
 				var w = this.imgDom.width;
 				var h = this.imgDom.height;
 				var proportion = w / h;
-				var imgHeight = Math.sqrt((this.canvas.width * this.canvas.width) / ((proportion * proportion) + 1));
+				var imgHeight = Math.sqrt((canvas.width * canvas.width) / ((proportion * proportion) + 1));
 				var imgWidth = imgHeight * proportion;
-                this.context.drawImage(this.imgDom,-imgWidth / 2,-imgHeight / 2,imgWidth,imgHeight);
+
+				this.viewWidth = imgWidth;
+				this.viewHeight = imgHeight;
+                context.drawImage(this.imgDom,-imgWidth / 2,-imgHeight / 2,imgWidth,imgHeight);
 			}
 		},
 		confirm:function (){
 			var self = this;
 			try{
-				var base64 = this.canvas.toDataURL();
+				var realCanvas = document.createElement("canvas");
+				var realCtx = realCanvas.getContext("2d");
+				var rate = this.imgDom.width / this.viewWidth; // 计算图片最终放大或者缩小的比例
+				realCanvas.width = realCanvas.height = this.defaultAreaSize * rate;
+				this.rotateImage(this.angel, realCanvas, realCtx); // 画出原图大小的旋转后的canvas
+
+				var base64 = realCanvas.toDataURL();
+				// var base64 = this.canvas.toDataURL();
 				var img = document.createElement("img");
 				img.onload = function (){
 					var outputCanvas = document.createElement("canvas");
 					var outputCtx = outputCanvas.getContext("2d");
-					var x = self.cropBox.offsetLeft;
-					var y = self.cropBox.offsetTop;
-					var w = self.cropBox.offsetWidth;
-					var h = self.cropBox.offsetHeight;
-					outputCanvas.width = self.imgWidth || w;
-					outputCanvas.height = self.imgHeight || h;
-					outputCtx.drawImage(img,x,y,w,h,0,0,self.imgWidth || w,self.imgHeight || h);
-					var outputBase64 = outputCanvas.toDataURL('image/jpeg');
+					var x = self.cropBox.offsetLeft * rate;
+					var y = self.cropBox.offsetTop * rate;
+					var w = self.cropBox.offsetWidth * rate;
+					var h = self.cropBox.offsetHeight * rate;
+					outputCanvas.width = self.imgWidth || w * rate;
+					outputCanvas.height = self.imgHeight || h * rate;
+					outputCtx.drawImage(img, x, y, w, h, 0, 0, self.imgWidth || w, self.imgHeight || h);
+					var outputBase64 = outputCanvas.toDataURL('image/jpeg',0.8);
 					self.confirmCallback && self.confirmCallback(outputBase64,outputCanvas);
 				};
 				img.src = base64;
@@ -368,18 +400,18 @@
 			this.cropBox.style.left = destinationX < 0 ? 0 : destinationX + 'px'; // 限制最小范围，避免超出上和左边界
 			this.cropBox.style.top = destinationY < 0 ? 0 : destinationY + 'px';  // 限制最小范围，避免超出上和左边界
 		},
-		getCanvasParams: function (){
+		getCanvasParams: function (operationSize){
 			var positionX,positionY,width,height;
 			//获取图片在canvas中的位置以及需要画出的宽高
 			if(this.imgDom.width > this.imgDom.height){
-				width = this.defaultAreaSize;
-				height = parseInt(this.defaultAreaSize * (this.imgDom.height / this.imgDom.width));
+				width = operationSize;
+				height = parseInt(operationSize * (this.imgDom.height / this.imgDom.width));
 				positionX = 0;
-				positionY = (this.defaultAreaSize - height) / 2;
+				positionY = (operationSize - height) / 2;
 			}else {
-				height = this.defaultAreaSize;
-				width = parseInt(this.defaultAreaSize * (this.imgDom.width / this.imgDom.height));
-				positionX = (this.defaultAreaSize - width) / 2;
+				height = operationSize;
+				width = parseInt(operationSize * (this.imgDom.width / this.imgDom.height));
+				positionX = (operationSize - width) / 2;
 				positionY = 0;
 			}
 			return {positionX:positionX,positionY:positionY,width:width,height:height}
@@ -387,7 +419,7 @@
 		showCropBoxSize: function (){
 			this.sizeDiv.innerHTML = this.cropBox.offsetWidth + ' x ' + this.cropBox.offsetHeight;
 		},
-		getImgSize:function (angel){
+		getImgSize:function (angel,canvas){
 			var self = this;
 			var getLine = function (rad,changeRad) {
 				var trueAngel  = null;
@@ -398,9 +430,9 @@
 				}
 				var line = null;
 				if(((Math.PI / 4) <= trueAngel && trueAngel <= (Math.PI * 3 / 4)) || ((Math.PI * 5 / 4) <= trueAngel && trueAngel <= (Math.PI * 7 / 4))){
-					line = Math.abs(self.defaultAreaSize / Math.sin(trueAngel));
+					line = Math.abs(canvas.width / Math.sin(trueAngel));
 				}else{
-					line = Math.abs(self.defaultAreaSize / Math.cos(trueAngel));
+					line = Math.abs(canvas.width / Math.cos(trueAngel));
 				}
 				return line;
 			};
@@ -444,7 +476,7 @@
 				display:'inline-block',
 				width:this.defaultAreaSize + 'px',
 				height:this.defaultAreaSize + 'px',
-				// background:'white'
+				background:'white'
 			});
 			this._css(this.cropBox, {
 				position:'absolute',
